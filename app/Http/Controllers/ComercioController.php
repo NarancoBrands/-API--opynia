@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Comercio;
 use App\Models\Campana;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Hash;
 
@@ -189,24 +190,28 @@ class ComercioController extends Controller
     }
 
     private function addPhoto(Request $request, $name = 'imagenCampana') {
-
+        // Validación específica para este método
         $validator = Validator::make($request->all(), [
-            $name => 'file|mimes:jpeg,png,jpg,gif,webp|max:20480',
+            $name => 'required|file|mimes:jpeg,png,jpg,gif,webp|max:20480', // Se hace requerido aquí
         ]);
 
         if ($validator->fails()) {
-            return $this->sendError($validator->messages()->first(), [], 500);
+            // Usa una estructura de respuesta de error consistente
+            return response()->json(['message' => $validator->messages()->first(), 'success' => false, 'data' => null], 422);
         }
 
         if (!$request->hasFile($name)) {
-            return $this->sendError('NO FILE', [], 500);
+            return response()->json(['message' => 'NO FILE', 'success' => false, 'data' => null], 400);
         }
 
         $file = $request->file($name);
-        $filename = bin2hex(openssl_random_pseudo_bytes(8));
+        $filename = bin2hex(openssl_random_pseudo_bytes(8)); // Nombre aleatorio
         $extension = $file->extension();
-        $fileStore = $filename . '_' . time() . '.' . $extension;
-        $path = $request->file($name)->move('imagenes', $fileStore);
-        return $this->sendResponse(['filename' => $fileStore, 'path' => $path]);
+        $fileStore = $filename . '_' . time() . '.' . $extension; // Nombre único con timestamp
+        // Guarda en 'storage/app/public/imagenes'. Necesitas 'php artisan storage:link'
+        $path = $file->storeAs('imagenes', $fileStore, 'public');
+
+        // Devuelve una estructura de datos consistente con cómo se usa en store/update
+        return response()->json(['data' => ['filename' => $fileStore, 'path' => Storage::url($path)], 'success' => true]);
     }
 }
