@@ -1,11 +1,12 @@
 <?php
 
+use App\Http\Controllers\Auth\AuthController;
+use App\Http\Controllers\CampanaController;
+use App\Http\Controllers\ComercioController;
+use App\Http\Controllers\ResenasController;
+use App\Http\Controllers\WhatsAppController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Auth\AuthController;
-use App\Http\Controllers\ComercioController;
-use App\Http\Controllers\CampanaController;
-use App\Http\Controllers\ResenasController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -41,4 +42,11 @@ Route::prefix('resenas')->group(function () {
 
     Route::get('/getByIdComercio/{id}', [ResenasController::class, 'getResenasByIdComercio']); // Crear campaña
 
+});
+// Grupo de rutas para API de WhatsApp
+Route::prefix('whatsapp')->group(function () {
+    Route::post('/messages', [WhatsAppController::class, 'enviar']);
+    Route::post('/templates', [WhatsAppController::class, 'crearPlantilla']);
+    Route::post('/media', [WhatsAppController::class, 'subirMedia']);
+    Route::post('/templates/media-handles', [WhatsAppController::class, 'obtenerHandleParaPlantilla']);
 });
