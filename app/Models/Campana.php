@@ -16,6 +16,7 @@ class Campana extends Model
     protected $fillable = [
         'tituloCampana',
         'mensajeCampana',
+        'nombre_plantilla',
         'idComercio',
         'imagenCampana',
         'idImagenMeta',

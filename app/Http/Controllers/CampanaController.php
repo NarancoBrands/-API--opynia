@@ -40,50 +40,54 @@ class CampanaController extends Controller
             'tituloCampana'=> 'required|string|max:255',
             'mensajeCampana' => 'required|string|max:255',
             'idComercio' => 'required|integer|exists:comercios,id',
-            'imagenCampana' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:20480', // Valida el archivo aquí
+            'imagenCampana' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:20480',
             'horasCampana' => 'required|integer',
             'minutosCampana' => 'required|integer'
         ]);
 
-        $data = $validatedData; // Usa los datos validados
-        // Elimina 'imagenCampana' de $data ya que es un archivo y se manejará por separado
-        if (array_key_exists('imagenCampana', $data)) {
-            unset($data['imagenCampana']);
-        }
-        $data['idImagenMeta'] = null; // Valor por defecto
+        $data = $validatedData;
+        $data['idImagenMeta'] = null;
 
-        // Si se ha subido un archivo para 'imagenCampana'
         if ($request->hasFile('imagenCampana')) {
             $fileToUpload = $request->file('imagenCampana');
 
-            // 1. Guardar imagen localmente
-            // Llama a addPhoto y obtiene los datos de la respuesta JSON
+            // Subida local
             $localImageUploadResponse = $this->addPhoto($request, 'imagenCampana')->getData();
             if (!$localImageUploadResponse->success) {
-                // Asume que sendError es un método en tu BaseController o este Controller
-                // Devuelve una respuesta JSON estándar para errores
-                return response()->json(['message' => $localImageUploadResponse->message, 'success' => false], 400);
+                return response()->json([
+                    'message' => $localImageUploadResponse->message,
+                    'success' => false
+                ], 400);
             }
-            $data['imagenCampana'] = $localImageUploadResponse->data->filename; // Nombre del archivo local
 
-            // 2. Subir a la API de WhatsApp Business para obtener idImagenMeta
+            $data['imagenCampana'] = $localImageUploadResponse->data->filename;
+
+            // Subida a WhatsApp
             $whatsappMediaUploadResponse = $this->subirMediaAWsp($fileToUpload);
-
             if (isset($whatsappMediaUploadResponse['id'])) {
                 $data['idImagenMeta'] = $whatsappMediaUploadResponse['id'];
             } else {
                 Log::error('Fallo al subir medio a WhatsApp o obtener ID durante la creación.', $whatsappMediaUploadResponse);
-                // La campaña se creará sin idImagenMeta o con null
             }
         } else {
-            $data['imagenCampana'] = null; // No se subió imagen
+            $data['imagenCampana'] = null;
         }
 
-        $campana = Campana::create($data); // Crea la campaña con los datos preparados
-        $campana->load('comercio'); // Carga la relación para la respuesta
+        // Creamos la campaña SIN nombre_plantilla todavía
+        $campana = Campana::create($data);
 
-        // Asume que sendResponse es un método en tu BaseController o este Controller
-        // Devuelve una respuesta JSON estándar para éxito
+        // Generamos el nombre de plantilla: plantilla_nombre_idcampana
+        $tituloNormalizado = strtolower($validatedData['tituloCampana']);
+        $tituloNormalizado = preg_replace('/[^a-z0-9_]/', '_', $tituloNormalizado);
+        $tituloNormalizado = substr($tituloNormalizado, 0, 30);
+        $nombrePlantilla = "plantilla_{$tituloNormalizado}_{$campana->id}";
+
+        // Actualizamos la campaña con el nombre de plantilla generado
+        $campana->nombre_plantilla = $nombrePlantilla;
+        $campana->save();
+
+        $campana->load('comercio');
+
         return response()->json(['data' => $campana, 'success' => true]);
     }
 
@@ -114,7 +118,7 @@ class CampanaController extends Controller
             'tituloCampana'=> 'sometimes|required|string|max:255',
             'mensajeCampana' => 'sometimes|required|string|max:255',
             'idComercio' => 'sometimes|required|integer|exists:comercios,id', // Generalmente no se cambia o se maneja con cuidado
-            'imagenCampana' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:20480', // Para un nuevo archivo de imagen
+         //   'imagenCampana' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:20480', // Para un nuevo archivo de imagen
             'horasCampana' => 'sometimes|required|integer',
             'minutosCampana' => 'sometimes|required|integer'
         ]);
@@ -174,7 +178,24 @@ class CampanaController extends Controller
 
         return response()->json(['message' => 'Campaña eliminada exitosamente']);
     }
+    public function updateTemplateName(Request $request, Campana $campana)
+    {
+        $validator = Validator::make($request->all(), [
+            'nombre_plantilla' => 'required|string|max:512',
+        ]);
 
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $campana->nombre_plantilla = $request->input('nombre_plantilla');
+        $campana->save();
+
+        return response()->json([
+            'message' => 'Nombre de plantilla actualizado con éxito.',
+            'data' => $campana
+        ]);
+    }
 
 
     // Método para guardar la imagen localmente

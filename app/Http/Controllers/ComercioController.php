@@ -70,11 +70,11 @@ class ComercioController extends Controller
             }
 
             $data = $request->all(); // Obtener todos los datos del request
-    
+
             if ($request->hasFile('imagenCampana')) {
                 $imagen = $this->addPhoto($request)->getData();
-        
-                if(!$imagen->success) {
+
+                if (!$imagen->success) {
                     return $this->sendError($imagen->message, [], 400);
                 }
                 $data['imagenCampana'] = $imagen->data->filename;
@@ -89,6 +89,17 @@ class ComercioController extends Controller
                 'horasCampana' => $validatedData['horasCampana'],
                 'minutosCampana' => $validatedData['minutosCampana'],
             ]);
+
+            // Generar el nombre de plantilla
+            $tituloNormalizado = strtolower($validatedData['tituloCampana']);
+            $tituloNormalizado = preg_replace('/[^a-z0-9_]/', '_', $tituloNormalizado);
+            $tituloNormalizado = substr($tituloNormalizado, 0, 30);
+            $nombrePlantilla = "plantilla_{$tituloNormalizado}_{$campana->id}";
+
+
+            $campana->nombre_plantilla = $nombrePlantilla;
+            $campana->save();
+
 
             $comercio->update([
                 'campana' => $campana->id
@@ -189,7 +200,8 @@ class ComercioController extends Controller
         return response()->json(['message' => 'Comercio eliminado con éxito']);
     }
 
-    private function addPhoto(Request $request, $name = 'imagenCampana') {
+    private function addPhoto(Request $request, $name = 'imagenCampana')
+    {
         // Validación específica para este método
         $validator = Validator::make($request->all(), [
             $name => 'required|file|mimes:jpeg,png,jpg,gif,webp|max:20480', // Se hace requerido aquí

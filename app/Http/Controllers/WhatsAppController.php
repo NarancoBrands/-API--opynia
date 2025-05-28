@@ -32,20 +32,11 @@ class WhatsAppController extends Controller
     /**
      * Envía un mensaje de plantilla de WhatsApp.
      */
-    public function enviar(Request $request)
+    public function enviarMensajeTemplate(string $telefono,string $nombrePlantilla, string $idImagenMeta)
     {
-        $request->validate([
-            'telefono' => 'required|string',
-            'nombre' => 'required|string',
-            'consentimiento' => 'accepted', // Asegura que el usuario ha dado consentimiento
-        ]);
-
-        $telefono = $request->input('telefono');
-        $nombre = $request->input('nombre');
-
         if (empty($this->phoneNumberId) || empty($this->accessToken)) {
-            Log::error('WhatsAppController: Variables de entorno de WhatsApp (PHONE_NUMBER_ID o ACCESS_TOKEN) no configuradas.');
-            return response()->json(['error' => 'Configuración de WhatsApp incompleta en el servidor.'], 500);
+            Log::error('WhatsAppController: Variables de entorno de WhatsApp no configuradas.');
+            return ['success' => false, 'message' => 'Configuración incompleta'];
         }
 
         $url = "{$this->graphApiBaseUrl}/{$this->apiVersion}/{$this->phoneNumberId}/messages";
@@ -55,7 +46,7 @@ class WhatsAppController extends Controller
             'to' => $telefono,
             'type' => 'template',
             'template' => [
-                'name' => 'opynia', // Nombre de la plantilla (debería ser dinámico o configurable)
+                'name' => $nombrePlantilla,
                 'language' => ['code' => 'es'],
                 'components' => [
                     [
@@ -63,41 +54,30 @@ class WhatsAppController extends Controller
                         'parameters' => [
                             [
                                 'type' => 'image',
-                                // El ID de la imagen debe ser obtenido previamente subiendo la imagen a WhatsApp.
-                                // O puede ser un handle si la plantilla así lo requiere.
-                                'image' => ['id' => '1674497739873315'] // Este ID es de ejemplo
+                                'image' => ['id' => $idImagenMeta]
                             ]
                         ]
                     ],
                     [
-                        'type' => 'body',
-                        'parameters' => [
-                            [
-                                'type' => 'text',
-                                'text' => $nombre
-                            ]
-                        ]
+                        'type' => 'body'
                     ]
                 ]
-            ],
+            ]
         ];
 
-        Log::info('WhatsAppController: Payload de mensaje a enviar: ' . json_encode($payload, JSON_PRETTY_PRINT));
+        Log::info("WhatsAppController: Payload: ", $payload);
 
         $response = Http::withToken($this->accessToken)->post($url, $payload);
 
         if ($response->failed()) {
-            Log::error('WhatsAppController: Error al enviar el mensaje de WhatsApp.', [
+            Log::error('Error al enviar WhatsApp.', [
                 'status' => $response->status(),
-                'response' => $response->json(),
-                'url' => $url,
-                'payload_sent' => $payload
+                'response' => $response->json()
             ]);
-            return response()->json(['error' => 'Error al enviar el mensaje', 'details' => $response->json()], $response->status());
+            return ['success' => false, 'message' => 'Error al enviar', 'response' => $response->json()];
         }
 
-        Log::info('WhatsAppController: Mensaje de WhatsApp enviado exitosamente.', ['response' => $response->json()]);
-        return response()->json($response->json());
+        return ['success' => true, 'response' => $response->json()];
     }
 
     /**

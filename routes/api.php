@@ -22,7 +22,7 @@ Route::prefix('comercios')->group(function () {
     Route::post('/login', [AuthController::class, 'login']); // Login de comercio en calendario
 
 });
-
+// la pportada abajo las secciones, especialistas en estructuras de metal y de hormigo, carrusel de fotos
 // Grupo de rutas para campañas
 Route::prefix('campanas')->group(function () {
     Route::get('/getCampanas', [CampanaController::class, 'index']); // Obtener todas las campañas
@@ -30,6 +30,7 @@ Route::prefix('campanas')->group(function () {
     Route::get('/getCampana/{id}', [CampanaController::class, 'show']); // Obtener campaña por ID
     Route::post('/actualizarCampana/{id}', [CampanaController::class, 'update']); // Actualizar campaña
     Route::delete('/eliminarCampana/{id}', [CampanaController::class, 'destroy']); // Eliminar campaña
+    Route::put('/{campana}/template-name', [CampanaController::class, 'updateTemplateName']);
 });
 
 // Grupo de rutas para reseñas
@@ -38,7 +39,7 @@ Route::prefix('resenas')->group(function () {
     Route::post('/createResenas', [ResenasController::class, 'addResena']); // Crear campaña
     // Route::get('/getResenas/{id}', [ResenasController::class, 'show']); // Obtener campaña por ID
     // Route::post('/actualizarResenas/{id}', [ResenasController::class, 'update']); // Actualizar campaña
-    // Route::delete('/eliminarResenas/{id}', [ResenasController::class, 'destroy']); // Eliminar campaña
+    Route::delete('/eliminarResenas/{id}', [ResenasController::class, 'destroy']); // Eliminar campaña
 
     Route::get('/getByIdComercio/{id}', [ResenasController::class, 'getResenasByIdComercio']); // Crear campaña
 

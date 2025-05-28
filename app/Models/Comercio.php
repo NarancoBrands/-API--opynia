@@ -38,4 +38,14 @@ class Comercio extends Model
     public function resenas() {
         return $this->hasMany(Resena::class, 'comercioId');
     }
+
+    protected static function boot() {
+        parent::boot();
+
+        static::deleting(function ($comercio) {
+            $comercio->campanas()->delete();
+            $comercio->resenas()->delete();
+        });
+    }
+
 }
