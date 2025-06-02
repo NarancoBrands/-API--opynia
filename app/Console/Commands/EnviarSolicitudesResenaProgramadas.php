@@ -6,6 +6,7 @@ use App\Http\Controllers\WhatsAppController;
 use App\Models\Resena;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Config;
 
 class EnviarSolicitudesResenaProgramadas extends Command
 {
@@ -36,48 +37,33 @@ class EnviarSolicitudesResenaProgramadas extends Command
 
     public function handle()
     {
-        $this->info('Buscando solicitudes de reseña pendientes de envío...');
+        $this->info('Buscando solicitudes de reseña pendientes y programadas para envío...');
 
-        $solicitudesPendientes = Resena::where('enviado', false)->with('campana')->get();
+        $now = now();
+        $maxAttempts = Config::get('whatsapp.max_send_attempts', 3);
 
-        if ($solicitudesPendientes->isEmpty()) {
-            $this->info('No hay solicitudes de reseña pendientes.');
+        $solicitudesParaEnviar = Resena::select('resenas.*')
+            ->join('campanas', 'resenas.campanaId', '=', 'campanas.id')
+            ->where('resenas.enviado', false)
+            ->where('resenas.intentos_envio', '<', $maxAttempts)
+            ->whereNotNull('resenas.programado_en')
+            ->whereNotNull('campanas.nombre_plantilla')
+            ->whereNotNull('campanas.idImagenMeta')
+            ->whereRaw('DATE_ADD(DATE_ADD(resenas.programado_en, INTERVAL campanas.horasCampana HOUR), INTERVAL campanas.minutosCampana MINUTE) <= ?', [$now])
+            ->with('campana')
+            ->get();
+
+        if ($solicitudesParaEnviar->isEmpty()) {
+            $this->info('No hay solicitudes de reseña programadas para envío inmediato o todas las pendientes han alcanzado el límite de reintentos.');
             return 0;
         }
 
+        $this->info("Se encontraron {$solicitudesParaEnviar->count()} solicitudes para enviar ahora.");
         $contadorEnviados = 0;
 
-        foreach ($solicitudesPendientes as $solicitud) {
-            $campana = $solicitud->campana;
-
-            if (!$campana || !$campana->nombre_plantilla || !$campana->idImagenMeta) {
-                $this->warn("Solicitud ID {$solicitud->id} sin campaña válida o plantilla/imagen no configuradas.");
-                continue;
-            }
-
-            $tiempoEnvio = $solicitud->created_at
-                ->addHours($campana->horasCampana)
-                ->addMinutes($campana->minutosCampana);
-
-            if (now()->gte($tiempoEnvio)) {
-                $this->line("Enviando reseña ID {$solicitud->id} a {$solicitud->telefono}...");
-
-                $resultado = $this->whatsAppController->enviarMensajeTemplate(
-                    $solicitud->telefono,
-                    $campana->nombre_plantilla,
-                    $campana->idImagenMeta
-                );
-
-                if ($resultado['success']) {
-                    $solicitud->enviado = true;
-                    $solicitud->save();
-                    $this->info("✅ Enviado correctamente. ID {$solicitud->id}");
-                    $contadorEnviados++;
-                } else {
-                    $this->error("❌ Fallo en el envío. ID {$solicitud->id}: " . $resultado['message']);
-                }
-            } else {
-                $this->line("Solicitud ID {$solicitud->id} aún no está programada para envío. Programada para {$tiempoEnvio}");
+        foreach ($solicitudesParaEnviar as $solicitud) {
+            if ($solicitud->procesarEnvio($this->whatsAppController, $maxAttempts, $this)) {
+                $contadorEnviados++;
             }
         }
 

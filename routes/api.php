@@ -22,7 +22,7 @@ Route::prefix('comercios')->group(function () {
     Route::post('/login', [AuthController::class, 'login']); // Login de comercio en calendario
 
 });
-// la pportada abajo las secciones, especialistas en estructuras de metal y de hormigo, carrusel de fotos
+
 // Grupo de rutas para campañas
 Route::prefix('campanas')->group(function () {
     Route::get('/getCampanas', [CampanaController::class, 'index']); // Obtener todas las campañas
@@ -42,7 +42,7 @@ Route::prefix('resenas')->group(function () {
     Route::delete('/eliminarResenas/{id}', [ResenasController::class, 'destroy']); // Eliminar campaña
 
     Route::get('/getByIdComercio/{id}', [ResenasController::class, 'getResenasByIdComercio']); // Crear campaña
-
+    Route::get('/estadisticas', [ResenasController::class, 'getStats']);
 });
 // Grupo de rutas para API de WhatsApp
 Route::prefix('whatsapp')->group(function () {

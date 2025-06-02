@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\CampanaResource;
 use App\Models\Campana;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -20,16 +21,18 @@ class CampanaController extends Controller
 
     public function __construct()
     {
-        $this->graphApiBaseUrl = config('services.whatsapp.graph_api_base_url', 'https://graph.facebook.com');
-        $this->apiVersion = config('services.whatsapp.api_version', 'v19.0'); // Use a current version
+        $this->graphApiBaseUrl = config('services.whatsapp.graph_api_base_url');
+        $this->apiVersion = config('services.whatsapp.api_version');
         $this->phoneNumberId = config('services.whatsapp.phone_number_id');
         $this->accessToken = config('services.whatsapp.access_token');
+        $this->wabaId = config('services.whatsapp.waba_id');
     }
     // Obtener todas las campañas
     public function index()
     {
-        $campanas = Campana::all();  // O puedes usar paginación: Campana::paginate(10);
-        return response()->json($campanas);
+        $campanas = Campana::with('comercio')->get(); // O puedes usar paginación: Campana::paginate(10);
+        return CampanaResource::collection($campanas);
+
     }
 
     // Crear una nueva campaña
@@ -73,10 +76,9 @@ class CampanaController extends Controller
             $data['imagenCampana'] = null;
         }
 
-        // Creamos la campaña SIN nombre_plantilla todavía
         $campana = Campana::create($data);
 
-        // Generamos el nombre de plantilla: plantilla_nombre_idcampana
+
         $tituloNormalizado = strtolower($validatedData['tituloCampana']);
         $tituloNormalizado = preg_replace('/[^a-z0-9_]/', '_', $tituloNormalizado);
         $tituloNormalizado = substr($tituloNormalizado, 0, 30);
@@ -117,8 +119,8 @@ class CampanaController extends Controller
         $validatedData = $request->validate([
             'tituloCampana'=> 'sometimes|required|string|max:255',
             'mensajeCampana' => 'sometimes|required|string|max:255',
-            'idComercio' => 'sometimes|required|integer|exists:comercios,id', // Generalmente no se cambia o se maneja con cuidado
-         //   'imagenCampana' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:20480', // Para un nuevo archivo de imagen
+            'idComercio' => 'sometimes|required|integer|exists:comercios,id',
+         //   'imagenCampana' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:20480',
             'horasCampana' => 'sometimes|required|integer',
             'minutosCampana' => 'sometimes|required|integer'
         ]);
@@ -152,7 +154,6 @@ class CampanaController extends Controller
             }
         }
         // Si no se sube un nuevo archivo ('imagenCampana' no está en $request o no es $request->hasFile(...)),
-        // los campos $campana->imagenCampana y $campana->idImagenMeta no se verán afectados por este array $data.
 
         $campana->update($data); // Actualiza la campaña
         $campana->load('comercio'); // Carga la relación para la respuesta
@@ -166,18 +167,69 @@ class CampanaController extends Controller
         $campana = Campana::find($id);
 
         if (!$campana) {
+            Log::warning("CampanaController@destroy: Campaña ID {$id} no encontrada.");
             return response()->json(['message' => 'Campaña no encontrada'], 404);
         }
 
-        // Opcional: Borrar la imagen del almacenamiento
-         if ($campana->imagenCampana) {
-            Storage::disk('public')->delete('imagenes/' . $campana->imagenCampana);
-         }
+        $idComercio = $campana->idComercio;
+        $campaignsCountForComercio = Campana::where('idComercio', $idComercio)->count();
 
+        if ($campaignsCountForComercio <= 1) {
+            Log::warning("CampanaController@destroy: Intento de eliminar la última campaña (ID: {$id}) para el Comercio ID: {$idComercio}. Operación denegada.");
+            return response()->json([
+                'message' => 'No se puede eliminar esta campaña porque es la única asociada al comercio. El comercio debe tener al menos una campaña activa.'
+            ], 409); // 409 Conflict es un buen código de estado para esta situación
+        }
+
+        // 1. Intentar eliminar la plantilla de WhatsApp si existe un nombre de plantilla asociado
+        if (!empty($campana->nombre_plantilla)) {
+            if (empty($this->wabaId) || empty($this->accessToken)) {
+                Log::error('CampanaController@destroy: Variables de entorno para WhatsApp (WABA_ID o ACCESS_TOKEN) no configuradas. No se puede eliminar la plantilla.');
+
+            } else {
+                $templateName = $campana->nombre_plantilla;
+                $url = "{$this->graphApiBaseUrl}/{$this->apiVersion}/{$this->wabaId}/message_templates?name={$templateName}";
+
+                Log::info("CampanaController@destroy: Intentando eliminar plantilla WhatsApp '{$templateName}' para campaña ID {$id}.", ['url_meta' => $url]);
+
+                $response = Http::withToken($this->accessToken)
+                    ->timeout(30)
+                    ->delete($url);
+
+                if ($response->successful() && isset($response->json()['success']) && $response->json()['success'] === true) {
+                    Log::info("CampanaController@destroy: Plantilla de WhatsApp '{$templateName}' eliminada exitosamente de Meta API.", ['response' => $response->json()]);
+                } else {
+                    Log::error("CampanaController@destroy: Error al eliminar la plantilla de WhatsApp '{$templateName}' en Meta API.", [
+                        'status' => $response->status(),
+                        'response_body' => $response->body(),
+                        'url_meta' => $url,
+                    ]);
+                    // Considera si este error debería detener la eliminación de la campaña de la BD.
+                }
+            }
+        } else {
+            Log::info("CampanaController@destroy: No hay nombre de plantilla asociado a la campaña ID {$id}. Se omite la eliminación de plantilla de WhatsApp.");
+        }
+
+        // 2. Opcional: Borrar la imagen del almacenamiento local
+        if ($campana->imagenCampana) {
+            // Asegúrate de que el disco 'public' esté configurado correctamente en filesystems.php
+            // y que la ruta sea la correcta.
+            if (Storage::disk('public')->exists('imagenes/' . $campana->imagenCampana)) {
+                Storage::disk('public')->delete('imagenes/' . $campana->imagenCampana);
+                Log::info("CampanaController@destroy: Imagen local '{$campana->imagenCampana}' eliminada para campaña ID {$id}.");
+            } else {
+                Log::warning("CampanaController@destroy: Imagen local '{$campana->imagenCampana}' no encontrada en storage/imagenes/ para campaña ID {$id}.");
+            }
+        }
+
+        // 3. Eliminar la campaña de la base de datos
         $campana->delete();
+        Log::info("CampanaController@destroy: Campaña ID {$id} eliminada exitosamente de la base de datos.");
 
         return response()->json(['message' => 'Campaña eliminada exitosamente']);
     }
+
     public function updateTemplateName(Request $request, Campana $campana)
     {
         $validator = Validator::make($request->all(), [

@@ -13,10 +13,10 @@ class WhatsAppController extends Controller
 { protected string $graphApiBaseUrl;
     protected string $apiVersion;
     protected ?string $phoneNumberId;
-    protected ?string $accessToken; // Token del sistema/app para enviar mensajes y subir media simple
+    protected ?string $accessToken; e
     protected ?string $wabaId;
     protected ?string $appId;
-    protected ?string $userAccessToken; // Token de usuario para subidas de media para plantillas (resumable uploads)
+    protected ?string $userAccessToken;
 
     public function __construct()
     {
@@ -32,11 +32,11 @@ class WhatsAppController extends Controller
     /**
      * Envía un mensaje de plantilla de WhatsApp.
      */
-    public function enviarMensajeTemplate(string $telefono,string $nombrePlantilla, string $idImagenMeta)
+    public function enviarMensajeTemplate(string $telefono, string $nombrePlantilla, string $idImagenMeta)
     {
         if (empty($this->phoneNumberId) || empty($this->accessToken)) {
             Log::error('WhatsAppController: Variables de entorno de WhatsApp no configuradas.');
-            return ['success' => false, 'message' => 'Configuración incompleta'];
+            return ['success' => false, 'message' => 'Configuración de WhatsApp interna incompleta'];
         }
 
         $url = "{$this->graphApiBaseUrl}/{$this->apiVersion}/{$this->phoneNumberId}/messages";
@@ -65,27 +65,60 @@ class WhatsAppController extends Controller
             ]
         ];
 
-        Log::info("WhatsAppController: Payload: ", $payload);
+        Log::info("WhatsAppController: Enviando payload a WhatsApp: ", $payload);
 
-        $response = Http::withToken($this->accessToken)->post($url, $payload);
+        $response = Http::withToken($this->accessToken)
+            ->timeout(30)
+            ->post($url, $payload);
 
         if ($response->failed()) {
-            Log::error('Error al enviar WhatsApp.', [
+            $responseData = $response->json();
+
+            // El log actual es bueno, lo mantenemos.
+            Log::error('Error al enviar mensaje de WhatsApp.', [
                 'status' => $response->status(),
-                'response' => $response->json()
+                'url' => $url,
+                'payload' => $payload, // Loguear el payload puede ser útil para depurar
+                'response_body' => $responseData,
+                'response_headers' => $response->headers()
             ]);
-            return ['success' => false, 'message' => 'Error al enviar', 'response' => $response->json()];
+
+            // **NUEVA FUNCIONALIDAD: Mejorar el mensaje de error y añadir código de error**
+            $apiErrorMessage = 'Error al enviar mensaje vía WhatsApp. HTTP Status: ' . $response->status();
+            $apiErrorCode = null;
+
+            if (is_array($responseData) && isset($responseData['error'])) {
+                $errorPayload = $responseData['error']; // $responseData['error'] debería ser un array
+                if (is_array($errorPayload)) {
+                    // Usamos el mensaje de error de la API si está disponible
+                    $apiErrorMessage = $errorPayload['message'] ?? $apiErrorMessage;
+                    $apiErrorCode = $errorPayload['code'] ?? null;
+                }
+            } elseif (!$responseData && $response->body()) {
+                // Si la respuesta no fue JSON pero hubo un cuerpo, puede ser útil
+                $apiErrorMessage = 'Respuesta no JSON de la API: ' . substr($response->body(), 0, 255);
+            }
+
+            return [
+                'success'       => false,
+                'message'       => $apiErrorMessage,      // Mensaje de error más específico
+                'error_code'    => $apiErrorCode,         // Nuevo: Código de error de la API
+                'response_data' => $responseData          // Respuesta completa de la API para depuración avanzada
+            ];
         }
 
-        return ['success' => true, 'response' => $response->json()];
+        return [
+            'success'       => true,
+            'message'       => 'Mensaje enviado correctamente.', // Mensaje de éxito opcional
+            'response_data' => $response->json() // Respuesta completa de la API
+        ];
     }
-
     /**
      * Crea una plantilla de mensaje de WhatsApp.
      */
     public function crearPlantilla(Request $request)
     {
-        // 1. VALIDACIÓN ACTUALIZADA PARA LA ESTRUCTURA DE 'components'
+
         $validatedData = $request->validate([
             'name' => 'required|string|max:512|regex:/^[a-z0-9_]+$/', // Nombre de la plantilla
             'language' => 'required|string', // Código de idioma, ej: "es", "en_US"
@@ -131,7 +164,6 @@ class WhatsAppController extends Controller
         // La URL para crear plantillas usa el WABA ID (WhatsApp Business Account ID)
         $url = "{$this->graphApiBaseUrl}/{$this->apiVersion}/{$this->wabaId}/message_templates";
 
-        // 2. CONSTRUIR EL PAYLOAD PARA META USANDO DIRECTAMENTE LOS DATOS VALIDADOS
         // La lógica de construir 'components' a partir de campos individuales se elimina.
         $payload = [
             'name' => $validatedData['name'],
@@ -140,15 +172,13 @@ class WhatsAppController extends Controller
             'components' => $validatedData['components'], // Se pasa directamente el array de componentes validado
         ];
 
-        // Añadir 'allow_category_change' si está presente y es válido
+
         if (isset($validatedData['allow_category_change'])) {
             $payload['allow_category_change'] = (bool) $validatedData['allow_category_change'];
         } else {
-            $payload['allow_category_change'] = true; // Valor por defecto si no se envía
+            $payload['allow_category_change'] = true;
         }
 
-        // Ya no necesitas la validación específica para 'contenido_cuerpo' aquí,
-        // porque la presencia y contenido del BODY se valida dentro de 'components'.
 
         Log::info("WhatsAppController: Payload para crear plantilla WhatsApp (desde frontend con 'components'): " . json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 

@@ -17,6 +17,7 @@ class ResenasController extends Controller
             'telefono' => 'required|string',
             'mensaje' => 'required|string|max:255',
             'comercioId' => 'required|integer|exists:comercios,id',
+            'programado_en' => 'required|date_format:Y-m-d H:i:s',
         ]);
 
         // Obtener el comercio y la campaña asociada
@@ -46,6 +47,42 @@ class ResenasController extends Controller
         return $this->sendResponse($resenas);
 
     }
+
+
+    public function getStats()
+    {
+        $totalComercios = Comercio::count();
+        $totalResenas = Resena::count();
+
+        $resenasConvertidasCount = Resena::where('enviado', true)->count();
+        $resenasSinConvertirCount = Resena::where('enviado', false)->count();
+
+        $porcentajeConvertidas = 0;
+        $porcentajeSinConvertir = 0;
+
+        if ($totalResenas > 0) {
+            $porcentajeConvertidas = ($resenasConvertidasCount / $totalResenas) * 100;
+            $porcentajeSinConvertir = ($resenasSinConvertirCount / $totalResenas) * 100;
+        }
+
+        $stats = [
+            'totalComercios' => $totalComercios,
+            'totalResenas' => $totalResenas,
+            'resenasConvertidasPorcentaje' => round($porcentajeConvertidas, 2),
+            'resenasConvertidasNumero' => $resenasConvertidasCount,
+            'resenasSinConvertirPorcentaje' => round($porcentajeSinConvertir, 2),
+            'resenasSinConvertirNumero' => $resenasSinConvertirCount,
+        ];
+
+        return response()->json($stats);
+    }
+
+    /**
+     * Helper para enviar respuestas JSON estandarizadas.
+     * Puedes mover esto a un BaseController si lo usas en múltiples controladores.
+     */
+
+
     public function destroy($id)
     {
         $resena = Resena::find($id);

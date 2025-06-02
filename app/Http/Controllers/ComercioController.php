@@ -66,7 +66,7 @@ class ComercioController extends Controller
             // Guardar la imagen si se proporciona
             $imagenPath = null;
             if ($request->hasFile('imagenCampana')) {
-                $imagenPath = $request->file('imagenCampana')->store('campanas', 'public');
+                $imagenPath = $request->file('imagenCampana')->store('imagenes', 'public');
             }
 
             $data = $request->all(); // Obtener todos los datos del request
