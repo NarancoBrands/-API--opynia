@@ -3,6 +3,8 @@
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\CampanaController;
 use App\Http\Controllers\ComercioController;
+use App\Http\Controllers\GoogleAuthController;
+use App\Http\Controllers\GoogleWebhookController;
 use App\Http\Controllers\ResenasController;
 use App\Http\Controllers\WhatsAppController;
 use Illuminate\Http\Request;
@@ -12,7 +14,10 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
-
+Route::post('/google/webhook', [GoogleWebhookController::class, 'handle'])->name('google.webhook');
+Route::get('/google/auth/redirect', [GoogleAuthController::class, 'redirect'])->name('google.auth.redirect');
+Route::post('/google/start-watching', [GoogleAuthController::class, 'startWatching']);
+Route::post('/google/disconnect', [GoogleAuthController::class, 'disconnect']);
 Route::prefix('comercios')->group(function () {
     Route::get('/getComercios', [ComercioController::class, 'index']); // Obtener todos los comercios
     Route::post('/createComercio', [ComercioController::class, 'store']); // Crear comercio
@@ -43,6 +48,7 @@ Route::prefix('resenas')->group(function () {
 
     Route::get('/getByIdComercio/{id}', [ResenasController::class, 'getResenasByIdComercio']); // Crear campaña
     Route::get('/estadisticas', [ResenasController::class, 'getStats']);
+    Route::patch('/{resena}/google-event', [ResenasController::class, 'updateGoogleEventId']);
 });
 // Grupo de rutas para API de WhatsApp
 Route::prefix('whatsapp')->group(function () {
@@ -50,4 +56,5 @@ Route::prefix('whatsapp')->group(function () {
     Route::post('/templates', [WhatsAppController::class, 'crearPlantilla']);
     Route::post('/media', [WhatsAppController::class, 'subirMedia']);
     Route::post('/templates/media-handles', [WhatsAppController::class, 'obtenerHandleParaPlantilla']);
+    Route::get('/templates/{templateName}/status', [WhatsAppController::class, 'obtenerEstadoPlantilla']);
 });

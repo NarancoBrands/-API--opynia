@@ -21,7 +21,11 @@ class Campana extends Model
         'imagenCampana',
         'idImagenMeta',
         'horasCampana',
-        'minutosCampana'
+        'minutosCampana',
+        'estado',
+        'tipoBoton',
+        'textoBoton',
+        'urlBoton'
     ];
 
     protected $appends = ['urlimagen'];

@@ -3,17 +3,20 @@
 namespace App\Models;
 
 use App\Http\Controllers\WhatsAppController;
+use Google\Client;
+use Google\Service\Calendar;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-
+use Illuminate\Support\Facades\Log;
+use Google\Service\Calendar\Event as GoogleEvent;
 class Resena extends Model
 {
     use HasFactory;
 
-    protected $appends = ['fecha'];
+    protected $appends = ['fecha','programado_en_formateado'];
 
     protected $fillable = [
         'nombre',
@@ -23,7 +26,8 @@ class Resena extends Model
         'campanaId',
         'comercioId',
         'enviado',
-        'programado_en'
+        'programado_en',
+        'google_calendar_event_id'
     ];
 
     protected $casts = [
@@ -53,7 +57,41 @@ class Resena extends Model
     }
 
     public function getFechaAttribute() {
-        return $this->created_at->format('d/m/y');
+        return $this->created_at
+            ->setTimezone('Europe/Madrid')
+            ->format('d/m/Y H:i');
+    }
+    public function getProgramadoEnFormateadoAttribute()
+    {
+        if (!$this->programado_en) {
+            return null;
+        }
+
+        // Traducción manual de los meses
+        $meses = [
+            'January' => 'enero',
+            'February' => 'febrero',
+            'March' => 'marzo',
+            'April' => 'abril',
+            'May' => 'mayo',
+            'June' => 'junio',
+            'July' => 'julio',
+            'August' => 'agosto',
+            'September' => 'septiembre',
+            'October' => 'octubre',
+            'November' => 'noviembre',
+            'December' => 'diciembre',
+        ];
+
+        $fecha = $this->programado_en->setTimezone('Europe/Madrid');
+
+        $dia = $fecha->format('j');
+        $mesIngles = $fecha->format('F');
+        $mes = $meses[$mesIngles];
+        $anio = $fecha->format('Y');
+        $hora = $fecha->format('H:i');
+
+        return "$dia de $mes de $anio a las $hora";
     }
 
     public function procesarEnvio(WhatsAppController $whatsAppController, int $maxAttempts, Command $commandContext): bool
@@ -79,7 +117,6 @@ class Resena extends Model
 
         $commandContext->line("Enviando reseña ID {$this->id} (intento {$intentoActual}/{$maxAttempts}) a {$this->telefono} (Programación final: {$tiempoEnvioFinal->format('Y-m-d H:i:s')})...");
 
-        // Se llama al método modificado del WhatsAppController
         $resultado = $whatsAppController->enviarMensajeTemplate(
             $this->telefono,
             $campana->nombre_plantilla,
@@ -88,12 +125,12 @@ class Resena extends Model
 
         if ($resultado['success']) {
             $this->enviado = true;
-            $this->ultimo_error_envio = null; // Limpiar el último error en caso de éxito
+            $this->ultimo_error_envio = null;
             $this->save();
             $commandContext->info("✅ Enviado correctamente. ID {$this->id}");
+            $this->actualizarColorEventoGoogle('10');
             return true;
         } else {
-            // $resultado['message'] ahora será más específico gracias a los cambios en el controlador
             $this->registrarFallo($resultado['message'], $maxAttempts, $commandContext);
             // Si quisieras usar el error_code: $resultado['error_code'] está disponible aquí.
             return false;
@@ -117,4 +154,35 @@ class Resena extends Model
             $commandContext->error("❌ Fallo en el envío. {$logBase} (intento {$this->intentos_envio}/{$maxAttempts}): {$mensajeError}");
         }
     }
+    public function actualizarColorEventoGoogle(string $colorId)
+    {
+        if (!$this->google_calendar_event_id || !$this->comercio || !$this->comercio->google_refresh_token) {
+            Log::info("No se actualiza el color para la reseña {$this->id}: falta ID de evento o token.");
+            return;
+        }
+
+        try {
+            $client = new Client();
+            $client->setClientId(env('GOOGLE_CLIENT_ID'));
+            $client->setClientSecret(env('GOOGLE_CLIENT_SECRET'));
+            $client->fetchAccessTokenWithRefreshToken($this->comercio->google_refresh_token);
+
+            $calendarService = new Calendar($client);
+
+            // Creamos un objeto Evento solo con el ID del color que queremos cambiar
+            $eventUpdate = new GoogleEvent([
+                'colorId' => $colorId
+            ]);
+
+            // Usamos patch en lugar de update porque es más eficiente (solo envía los campos cambiados)
+            $calendarService->events->patch('primary', $this->google_calendar_event_id, $eventUpdate);
+
+            Log::info("Color del evento {$this->google_calendar_event_id} actualizado a '{$colorId}' para la reseña ID {$this->id}.");
+
+        } catch (\Exception $e) {
+            // Si falla, solo lo registramos. El proceso principal no debe detenerse por esto.
+            Log::error("No se pudo actualizar el color del evento para la reseña ID {$this->id}: " . $e->getMessage());
+        }
+    }
+
 }

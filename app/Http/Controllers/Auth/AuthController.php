@@ -17,7 +17,7 @@ class AuthController extends Controller
 
         $user = $request->authenticate();
         $token = $user->createToken(env('PASSWORD_TOKEN'))->accessToken;
-
+        $user->google_connected = !is_null($user->google_refresh_token);
         $response = [
             'usuario'    => $user,
             'token_type' => 'Bearer',

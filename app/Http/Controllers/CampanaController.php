@@ -27,6 +27,7 @@ class CampanaController extends Controller
         $this->accessToken = config('services.whatsapp.access_token');
         $this->wabaId = config('services.whatsapp.waba_id');
     }
+
     // Obtener todas las campañas
     public function index()
     {
@@ -40,12 +41,15 @@ class CampanaController extends Controller
     {
         // Validación de los datos de entrada
         $validatedData = $request->validate([
-            'tituloCampana'=> 'required|string|max:255',
+            'tituloCampana' => 'required|string|max:255',
             'mensajeCampana' => 'required|string|max:255',
             'idComercio' => 'required|integer|exists:comercios,id',
             'imagenCampana' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:20480',
             'horasCampana' => 'required|integer',
-            'minutosCampana' => 'required|integer'
+            'minutosCampana' => 'required|integer',
+            'tipoBoton' => 'nullable|string|max:255',
+            'textoBoton' => 'nullable|string|max:255',
+            'urlBoton' => 'nullable|string|max:255'
         ]);
 
         $data = $validatedData;
@@ -75,7 +79,7 @@ class CampanaController extends Controller
         } else {
             $data['imagenCampana'] = null;
         }
-
+        $data['estado'] = 'PENDIENTE';
         $campana = Campana::create($data);
 
 
@@ -117,10 +121,10 @@ class CampanaController extends Controller
 
         // Validación para la actualización (usando 'sometimes' para campos opcionales)
         $validatedData = $request->validate([
-            'tituloCampana'=> 'sometimes|required|string|max:255',
+            'tituloCampana' => 'sometimes|required|string|max:255',
             'mensajeCampana' => 'sometimes|required|string|max:255',
             'idComercio' => 'sometimes|required|integer|exists:comercios,id',
-         //   'imagenCampana' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:20480',
+            //   'imagenCampana' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:20480',
             'horasCampana' => 'sometimes|required|integer',
             'minutosCampana' => 'sometimes|required|integer'
         ]);
@@ -251,7 +255,8 @@ class CampanaController extends Controller
 
 
     // Método para guardar la imagen localmente
-    private function addPhoto(Request $request, $name = 'imagenCampana') {
+    private function addPhoto(Request $request, $name = 'imagenCampana')
+    {
         // Validación específica para este método
         $validator = Validator::make($request->all(), [
             $name => 'required|file|mimes:jpeg,png,jpg,gif,webp|max:20480', // Se hace requerido aquí

@@ -13,7 +13,7 @@ class WhatsAppController extends Controller
 { protected string $graphApiBaseUrl;
     protected string $apiVersion;
     protected ?string $phoneNumberId;
-    protected ?string $accessToken; e
+    protected ?string $accessToken;
     protected ?string $wabaId;
     protected ?string $appId;
     protected ?string $userAccessToken;
@@ -26,7 +26,7 @@ class WhatsAppController extends Controller
         $this->accessToken = config('services.whatsapp.access_token');
         $this->wabaId = config('services.whatsapp.waba_id');
         $this->appId = config('services.whatsapp.app_id');
-        $this->userAccessToken = config('services.whatsapp.user_access_token'); // Puede ser el mismo que accessToken o diferente
+        $this->userAccessToken = config('services.whatsapp.user_access_token');
     }
 
     /**
@@ -356,6 +356,112 @@ class WhatsAppController extends Controller
         } catch (\Exception $e) {
             Log::error('WhatsAppController: Excepción durante la subida de archivo para obtener handle: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Ocurrió una excepción durante la subida del archivo para plantilla', 'details' => $e->getMessage()], 500);
+        }
+    }
+
+    public function obtenerEstadoPlantilla(string $templateName)
+    {
+        // Verificar configuración esencial del controlador
+        if (empty($this->wabaId) || empty($this->accessToken)) {
+            Log::error('WhatsAppController: WABA_ID o ACCESS_TOKEN no configurados para obtener estado de plantilla.');
+            return [
+                'success' => false,
+                'message' => 'Configuración de WhatsApp (WABA ID o Token) incompleta en el servidor.',
+                'status' => null, 'reason' => null, 'template_id' => null
+            ];
+        }
+        if (empty($templateName)) {
+            Log::error('WhatsAppController: Nombre de plantilla no proporcionado para obtenerEstadoPlantilla.');
+            return [
+                'success' => false,
+                'message' => 'Nombre de plantilla no proporcionado.',
+                'status' => null, 'reason' => null, 'template_id' => null
+            ];
+        }
+
+        $languageCode = 'es'; // Idioma siempre es 'es' según el requerimiento
+        $url = "{$this->graphApiBaseUrl}/{$this->apiVersion}/{$this->wabaId}/message_templates";
+
+        try {
+            Log::info("WhatsAppController: Solicitando estado para plantilla '{$templateName}' (idioma: {$languageCode}) en WABA ID {$this->wabaId}");
+
+            $response = Http::withToken($this->accessToken)
+                ->timeout(30) // Tiempo de espera para la respuesta
+                ->get($url, [
+                    'name' => $templateName,
+                    'language' => $languageCode,
+                    'fields' => 'name,status,language,id,quality_score,rejected_reason' // Campos deseados
+                ]);
+
+            if ($response->failed()) {
+                $responseData = $response->json();
+                $apiErrorMessage = 'Error de API al obtener estado de plantilla.';
+                $apiErrorCode = null;
+
+                if (is_array($responseData) && isset($responseData['error']) && is_array($responseData['error'])) {
+                    $apiErrorMessage = $responseData['error']['message'] ?? $apiErrorMessage;
+                    $apiErrorCode = $responseData['error']['code'] ?? null;
+                }
+
+                Log::error("WhatsApp API Error al obtener estado de plantilla '{$templateName}' ({$languageCode}) para WABA {$this->wabaId}:", [
+                    'status_code' => $response->status(),
+                    'error_message' => $apiErrorMessage,
+                    'error_code' => $apiErrorCode,
+                    'response_data' => $responseData
+                ]);
+                return [
+                    'success'       => false,
+                    'message'       => $apiErrorMessage,
+                    // 'error_code'    => $apiErrorCode, // Opcional si el consumidor lo va a usar
+                    'status'        => null,
+                    'reason'        => null,
+                    'template_id'   => null
+                ];
+            }
+
+            $templatesData = $response->json();
+
+            if (isset($templatesData['data']) && !empty($templatesData['data'])) {
+                // Asumimos que la combinación de WABA ID, nombre e idioma 'es' es única y devuelve una plantilla.
+                $templateInfo = $templatesData['data'][0];
+                $status = $templateInfo['status'] ?? null;
+                // El campo para la razón de rechazo es 'rejected_reason'
+                $reason = $templateInfo['rejected_reason'] ?? null;
+                $templateId = $templateInfo['id'] ?? null;
+
+                Log::info("WhatsAppController: Plantilla '{$templateName}' ({$languageCode}) encontrada. Estado: {$status}, Razón rechazo: {$reason}, ID: {$templateId}");
+
+                return [
+                    'success'     => true,
+                    'status'      => $status,
+                    'reason'      => $reason,
+                    'template_id' => $templateId,
+                    'message'     => 'Estado de plantilla obtenido correctamente.'
+                ];
+            } else {
+                // La llamada a la API fue exitosa (HTTP 200), pero no se encontraron datos para esa plantilla.
+                // Esto usualmente significa que la plantilla con ese nombre e idioma no existe en esa WABA.
+                Log::warning("WhatsAppController: Plantilla '{$templateName}' ({$languageCode}) no encontrada para WABA ID {$this->wabaId} (o la respuesta de API está vacía).", [
+                    'response' => $templatesData
+                ]);
+                return [
+                    'success'     => true, // La llamada API fue exitosa
+                    'status'      => null, // Indica que la plantilla no fue encontrada o no tiene estado.
+                    'reason'      => null,
+                    'template_id' => null,
+                    'message'     => "Plantilla '{$templateName}' ({$languageCode}) no encontrada para WABA ID {$this->wabaId}."
+                ];
+            }
+
+        } catch (\Exception $e) {
+            Log::error("WhatsAppController: Excepción al obtener estado de plantilla '{$templateName}' ({$languageCode}) para WABA ID {$this->wabaId}: " . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            return [
+                'success'       => false,
+                'message'       => 'Excepción durante la llamada a la API para obtener estado: ' . $e->getMessage(),
+                'status'        => null,
+                'reason'        => null,
+                'template_id'   => null
+            ];
         }
     }
 }

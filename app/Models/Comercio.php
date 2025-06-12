@@ -2,16 +2,22 @@
 
 namespace App\Models;
 
-use Laravel\Passport\HasApiTokens;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Passport\HasApiTokens;
 
-class Comercio extends Model
+use App\Http\Controllers\WhatsAppController;
+use Illuminate\Console\Command;
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class Comercio extends Authenticatable
 {
-    use HasFactory, HasApiTokens;
+    use HasFactory, HasApiTokens, Notifiable;
 
     protected $table = 'comercios'; // Nombre de la tabla
-
+    protected $appends = ['google_connected'];
     protected $fillable = [
         'nombre',
         'direccion',
@@ -47,5 +53,8 @@ class Comercio extends Model
             $comercio->resenas()->delete();
         });
     }
-
+    public function getGoogleConnectedAttribute(): bool
+    {
+        return !is_null($this->google_refresh_token);
+    }
 }
