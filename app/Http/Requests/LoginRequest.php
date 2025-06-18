@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Comercio;
+use App\Models\Gestor;
 use Illuminate\Support\Str;
 use Illuminate\Http\Response;
 use Illuminate\Auth\Events\Lockout;
@@ -108,13 +109,24 @@ class LoginRequest extends FormRequest
 
     public function login($credentials)
     {
-        $user = Comercio::where('email', $credentials['email'])->first();
+        // Primero, intentar con el modelo Gestor
+        $gestor = Gestor::where('email', $credentials['email'])->first();
 
-        if (!$user || !Hash::check($credentials['password'], $user->password)) {
-            return false;
+        if ($gestor && Hash::check($credentials['password'], $gestor->password)) {
+            $gestor->token_scope = 'gestor'; // Añadimos el scope
+            return $gestor;
         }
 
-        return $user;
+        // Si no es un gestor, intentar con el modelo Comercio (como antes)
+        $comercio = Comercio::where('email', $credentials['email'])->first();
+
+        if ($comercio && Hash::check($credentials['password'], $comercio->password)) {
+            $comercio->token_scope = 'comercio'; // Añadimos el scope
+            return $comercio;
+        }
+
+        // Si ninguno coincide, devolver false para que se active tu error personalizado
+        return false;
     }
 
 }

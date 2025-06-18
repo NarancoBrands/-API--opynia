@@ -11,19 +11,22 @@ class AuthController extends Controller
 {
     public function login(LoginRequest $request)
     {
-        // return $request;
-        //Respuesta con el usuario logeado y su token de acceso
         $response = [];
 
         $user = $request->authenticate();
-        $token = $user->createToken(env('PASSWORD_TOKEN'))->accessToken;
 
+        $scope = $user->token_scope;
+
+        $token = $user->createToken(env('PASSWORD_TOKEN'), [$scope])->accessToken;
+
+        $user->google_connected = !is_null($user->google_refresh_token);
         $response = [
             'usuario'    => $user,
+            'scope'      => $scope,
             'token_type' => 'Bearer',
             'token'      => $token,
         ];
 
-        return $this->sendResponse($response, 'Comercio logueado correctamente.');
+        return $this->sendResponse($response, 'Usuario logueado correctamente.');
     }
 }

@@ -11,13 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('solicitudes', function (Blueprint $table) {
-            $table->id();
-            $table->text('nombre');
-            $table->text('email');
-            $table->text('telefono');
-
-            $table->timestamps();
+        Schema::table('campanas', function (Blueprint $table) {
+            $table->string('idImagenMeta')->nullable()->after('imagenCampana');
         });
     }
 
@@ -26,6 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('solicitudes');
+        Schema::table('campanas', function (Blueprint $table) {
+            $table->dropColumn('idImagenMeta');
+        });
     }
 };
