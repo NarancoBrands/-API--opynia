@@ -5,7 +5,7 @@ return [
 
     'allowed_methods' => ['*'],  // Permitir todos los métodos HTTP
 
-    'allowed_origins' => ['http://localhost:4200', 'http://localhost:4201'],  // La URL de tu aplicación Angular
+    'allowed_origins' => ['http://localhost:4200', 'http://localhost:4201','https://cliente.opynia.es','https://gestor.opynia.es'],  // La URL de tu aplicación Angular
 
     'allowed_origins_patterns' => [],
 

@@ -72,11 +72,11 @@ class GoogleAuthController extends Controller
             $comercio->google_token_expires_at = Carbon::now()->addSeconds($tokenResponse['expires_in']);
             $comercio->save();
 
-            return Redirect::to(env('FRONTEND_URL', 'http://localhost:4200') . '/calendario?status=success');
+            return Redirect::to(env('FRONTEND_URL', 'https://cliente.opynia.es') . '/calendario?status=success');
 
         } catch (\Exception $e) {
             Log::error('Error en el callback de Google: ' . $e->getMessage());
-            return Redirect::to(env('FRONTEND_URL', 'http://localhost:4200') . '/calendario?status=error');
+            return Redirect::to(env('FRONTEND_URL', 'https://cliente.opynia.es') . '/calendario?status=error');
         }
     }
 

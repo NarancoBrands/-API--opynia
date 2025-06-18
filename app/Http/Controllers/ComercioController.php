@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Solicitud;
 use Illuminate\Http\Request;
 use App\Models\Comercio;
 use App\Models\Campana;
@@ -48,7 +49,7 @@ class ComercioController extends Controller
             'activo' => 'nullable|boolean',
             'bloqueado' => 'nullable|boolean',
             'cuenta' => 'required|string|max:255',
-
+            'solicitud_id'=> 'nullable|string|max:255',
             // Campos de Campana
             'tituloCampana' => 'required|string|max:255',
             'mensajeCampana' => 'required|string|max:255',
@@ -137,7 +138,14 @@ class ComercioController extends Controller
             $comercio->update([
                 'campana' => $campana->id // Asegúrate que la columna 'campana' exista en la tabla 'comercios'
             ]);
-
+            if (isset($validatedData['solicitud_id'])) {
+                $solicitud = Solicitud::find($validatedData['solicitud_id']);
+                if ($solicitud) {
+                    $solicitud->update(['creado' => true]);
+                } else {
+                    Log::warning('Solicitud no encontrada para el ID: ' . $validatedData['solicitud_id']);
+                }
+            }
             // Confirmar la transacción
             DB::commit();
 
