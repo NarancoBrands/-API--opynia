@@ -17,7 +17,7 @@ Route::get('/google/auth/redirect', [GoogleAuthController::class, 'redirect'])->
 Route::post('/google/start-watching', [GoogleAuthController::class, 'startWatching']);
 Route::post('/google/disconnect', [GoogleAuthController::class, 'disconnect']);
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware('auth:api,api2')->group(function () {
 
     Route::get('/user', function (Request $request) {
         return $request->user();
