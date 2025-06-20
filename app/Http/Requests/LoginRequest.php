@@ -13,6 +13,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Auth\AuthenticationException;
 
 class LoginRequest extends FormRequest
 {
@@ -39,29 +40,49 @@ class LoginRequest extends FormRequest
 
     public function authenticate()
     {
-        // $this->ensureIsNotRateLimited();
+        // 1. Asegurarse de que la petición no esté bloqueada por "Rate Limiting"
+        $this->ensureIsNotRateLimited();
 
-        if (! $user = $this->login($this->only('email', 'password'))) {
-            // RateLimiter::hit($this->throttleKey());
+        $credentials = $this->only('email', 'password');
 
-            throw new HttpResponseException(response()->json(
-                [
-                    'success' => false,
-                    'message' => 'Validation failed',
-                    'errors'  => [
-                        'email|password' => [
-                            // 'The provided email or password is incorrect.',
-                            'El email o contraseña son incorrectos.',
-                        ],
-                    ],
-                ],
-                Response::HTTP_FORBIDDEN
-            ));
+        // 2. Intentar con el modelo Gestor
+        $gestor = Gestor::where('email', $credentials['email'])->first();
+
+        if ($gestor && Hash::check($credentials['password'], $gestor->password)) {
+            RateLimiter::clear($this->throttleKey()); // Limpiar intentos si el login es exitoso
+            return $gestor;
         }
 
-        // RateLimiter::clear($this->throttleKey());
+        // 3. Si no es un gestor, intentar con el modelo Comercio
+        $comercio = Comercio::where('email', $credentials['email'])->first();
 
-        return $user;
+        if ($comercio && Hash::check($credentials['password'], $comercio->password)) {
+            RateLimiter::clear($this->throttleKey()); // Limpiar intentos si el login es exitoso
+            return $comercio;
+        }
+
+        // 4. Si la autenticación falla, registrar un intento fallido
+        RateLimiter::hit($this->throttleKey());
+
+        // 5. Lanzar la excepción de autenticación estándar
+        throw new AuthenticationException('Las credenciales proporcionadas son incorrectas.');
+    }
+    public function ensureIsNotRateLimited(): void
+    {
+        if (! RateLimiter::tooManyAttempts($this->throttleKey(), 5)) {
+            return;
+        }
+
+        event(new Lockout($this));
+
+        $seconds = RateLimiter::availableIn($this->throttleKey());
+
+        throw ValidationException::withMessages([
+            'email' => trans('auth.throttle', [
+                'seconds' => $seconds,
+                'minutes' => ceil($seconds / 60),
+            ]),
+        ]);
     }
 
     public function validationFailed(): void
@@ -81,23 +102,7 @@ class LoginRequest extends FormRequest
      *
      * @throws \Illuminate\Validation\ValidationException
      */
-    public function ensureIsNotRateLimited(): void
-    {
-        if (! RateLimiter::tooManyAttempts($this->throttleKey(), 5)) {
-            return;
-        }
 
-        event(new Lockout($this));
-
-        $seconds = RateLimiter::availableIn($this->throttleKey());
-
-        throw ValidationException::withMessages([
-            'email' => trans('auth.throttle', [
-                'seconds' => $seconds,
-                'minutes' => ceil($seconds / 60),
-            ]),
-        ]);
-    }
 
     /**
      * Get the rate limiting throttle key for the request.
@@ -107,26 +112,7 @@ class LoginRequest extends FormRequest
         return Str::transliterate(Str::lower($this->input('email')).'|'.$this->ip());
     }
 
-    public function login($credentials)
-    {
-        // Primero, intentar con el modelo Gestor
-        $gestor = Gestor::where('email', $credentials['email'])->first();
 
-        if ($gestor && Hash::check($credentials['password'], $gestor->password)) {
-            $gestor->token_scope = 'gestor'; // Añadimos el scope
-            return $gestor;
-        }
 
-        // Si no es un gestor, intentar con el modelo Comercio (como antes)
-        $comercio = Comercio::where('email', $credentials['email'])->first();
-
-        if ($comercio && Hash::check($credentials['password'], $comercio->password)) {
-            $comercio->token_scope = 'comercio'; // Añadimos el scope
-            return $comercio;
-        }
-
-        // Si ninguno coincide, devolver false para que se active tu error personalizado
-        return false;
-    }
 
 }

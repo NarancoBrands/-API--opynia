@@ -43,11 +43,18 @@ return [
     // ],
     'guards' => [
         'web' => [
-            'driver' => 'passport',
+            'driver' => 'session',
             'provider' => 'users',
         ],
+        'api' => [
+            'driver' => 'passport',
+            'provider' => 'gestores', // Puede ser 'gestores' o 'comercios', Passport lo resolverá.
+        ],
+        'api2' => [
+            'driver' => 'passport',
+            'provider' => 'comercios', // Puede ser 'gestores' o 'comercios', Passport lo resolverá.
+        ],
     ],
-
     /*
     |--------------------------------------------------------------------------
     | User Providers
@@ -68,15 +75,17 @@ return [
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
-            'model' =>  App\Models\Comercio::class,
+            'model' => App\Models\User::class, // Asumiendo un modelo User para la parte web.
         ],
-
-        // 'users' => [
-        //     'driver' => 'database',
-        //     'table' => 'users',
-        // ],
+        'gestores' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\Gestor::class,
+        ],
+        'comercios' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\Comercio::class,
+        ],
     ],
-
     /*
     |--------------------------------------------------------------------------
     | Resetting Passwords
@@ -99,12 +108,12 @@ return [
     'passwords' => [
         'users' => [
             'provider' => 'users',
-            'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            'table' => 'password_reset_tokens',
             'expire' => 60,
             'throttle' => 60,
         ],
-    ],
 
+    ],
     /*
     |--------------------------------------------------------------------------
     | Password Confirmation Timeout
